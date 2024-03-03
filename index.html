@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>London Boroughs Data Map</title>
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script> <!-- ECharts library -->
+
+    <style>
+        body { margin:0; padding:0; }
+        #map { position:absolute; top:0; bottom:0; width:100%; }
+        #chart { position:absolute; bottom:0; height:50%; width:100%; } /* Container for the ECharts chart */
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<div id="chart"></div>
+
+<div id="selections" style="position: absolute; top: 10px; left: 10px; background: white; padding: 10px; z-index: 1;">
+    <div><input type="radio" name="data-selection" id="no2" value="NO2"><label for="no2">NO2</label></div>
+    <!-- <div><input type="radio" name="data-selection" id="pm25" value="PM2.5"><label for="pm25">PM2.5</label></div> -->
+    <div><input type="radio" name="data-selection" id="greenery" value="Greenery"><label for="greenery">Greenery</label></div>
+</div>
+<script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoibHVjeTA3MDgiLCJhIjoiY2xyN3I2bXgzMHQ3azJqcHFzYXBsM214NSJ9.CQ_-sIQwckB2hCyt3QSoBA'; // Replace with your Mapbox access token
+    var map = new mapboxgl.Map({
+        container: 'map', // container ID
+        style: 'mapbox://styles/mapbox/light-v10', // style URL
+        center: [-0.1276, 51.5072], // starting position [lng, lat]
+        zoom: 9 // starting zoom
+    });
+
+    var chart = echarts.init(document.getElementById('chart'));
+    var chartVisible = false; // Variable to track the chart's visibility
+    var plotChart = true; // Flag to control chart plotting
+
+
+    map.on('load', function () {
+        map.addSource('boroughs', {
+            'type': 'geojson',
+            'data': './data/london_data.json'
+        });
+
+        // Add a layer to display the borough boundaries
+        map.addLayer({
+            'id': 'boroughs-boundary',
+            'type': 'fill',
+            'source': 'boroughs',
+            'layout': {},
+            'paint': {
+                'fill-color': '#FFC0CB', // Fill color for the boroughs
+                'fill-opacity': 0.4 // Fill opacity for the boroughs
+            }
+        });
+
+        // Add a black outline around the boroughs
+        map.addLayer({
+            'id': 'outline',
+            'type': 'line',
+            'source': 'boroughs',
+            'layout': {},
+            'paint': {
+                'line-color': '#000',
+                'line-width': 2
+            }
+        });
+
+        // Implement a click event for each bourough to display "percent_green" data in the json using Echarts
+        map.on('click', 'boroughs-boundary', function (e) {
+            if(!plotChart){return;}
+
+            if (chartVisible) {
+                document.getElementById('chart').style.display = 'none'; // Hide the chart container
+                chartVisible = false; // Update visibility status
+            }else{
+                var percentGreen = e.features[0].properties.percent_green; // Get the percent_green data
+                var boroughName = e.features[0].properties.NAME_3; // Assuming NAME_3 is the borough name property
+                var NO2_2025 = e.features[0].properties.NO2_2025;
+                var NO2_2019 = e.features[0].properties.NO2_2019;
+                var NO2_2016 = e.features[0].properties.NO2_2016;
+                var NO2_2013 = e.features[0].properties.NO2_2013;
+
+                // console.log(percentGreen, NO2_2025, NO2_2019, NO2_2016, NO2_2013);
+
+                // Update the ECharts instance with new data
+                chart.setOption({
+                    title: {
+                        text: 'NO2 concentration in ' + boroughName,
+                    },
+                    tooltip: {
+                        trigger: 'axis',
+                        axisPointer: {
+                            type: 'line'
+                        }
+                    },
+                    legend: {
+                        data: ['NO2_2013', 'NO2_2016', 'NO2_2019', 'NO2_2025' ]
+                    },
+                    xAxis: {
+                        type: 'category',
+                        data: ['2013', '2016', '2019', '2025']
+                    },
+                    yAxis: {
+                        type: 'value'
+                    },
+                    series: [{
+                        name: 'NO2 Levels',
+                        type: 'line',
+                        data: [NO2_2013, NO2_2016, NO2_2019, NO2_2025], // Values in order of the years
+                        showSymbol: true, // Optionally, show symbols for each data point
+                        smooth: false // Smooth the line for visual appeal
+                    }]
+                });
+
+                document.getElementById('chart').style.display = 'block'; // Show the chart container
+                chartVisible = true; // Update visibility status
+            }
+        });
+    });
+
+    function handleSelectionChange() {
+        var selectedValue = document.querySelector('input[name="data-selection"]:checked').value;
+
+        if (selectedValue === "Greenery") {
+            plotChart = false; // Disable chart plotting for "Greenery"
+
+            map.addLayer({
+                id: 'greenery',
+                type: 'fill',
+                source: 'boroughs',
+                layout: {},
+                paint: {
+                    // Use an expression to calculate color depth based on 'percent_green'
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'percent_green'],
+                        0, '#ffffcc',
+                        100, '#006837' // Adjust the color scale as needed
+                    ],
+                    'fill-opacity': 0.7
+                }
+            });
+        } else {
+            plotChart = true; // Enable chart plotting for NO2 and PM2.5
+            // Check if the 'greenery' layer already exists, remove it if it does
+            if (map.getLayer('greenery')) {
+                map.removeLayer('greenery');
+                map.removeSource('greenery');
+            }
+        }
+    }
+
+        // Add event listeners to selection inputs
+    document.querySelectorAll('input[name="data-selection"]').forEach(function(input) {
+        input.addEventListener('change', handleSelectionChange);
+    });
+</script>
+</body>
+</html>
